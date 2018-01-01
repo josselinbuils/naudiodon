@@ -22,6 +22,8 @@
 #include <condition_variable>
 #include <map>
 #include <portaudio.h>
+#include <pa_win_wasapi.h>
+#include <pa_win_waveformat.h>
 
 using namespace v8;
 
@@ -36,7 +38,7 @@ static void freeAllocCb(char* data, void* hint) {
 
 class InContext {
 public:
-  InContext(std::shared_ptr<AudioOptions> audioOptions, PaStreamCallback *cb)
+  InContext(std::shared_ptr<AudioOptions> audioOptions, PaStreamCal1lback *cb)
     : mActive(true), mAudioOptions(audioOptions), mChunkQueue(mAudioOptions->maxQueue()) {
 
     PaError errCode = Pa_Initialize();
@@ -73,7 +75,18 @@ public:
     }
 
     inParams.suggestedLatency = Pa_GetDeviceInfo(inParams.device)->defaultLowInputLatency;
-    inParams.hostApiSpecificStreamInfo = NULL;
+	struct PaWasapiStreamInfo wasapiInfo;
+	if (Pa_GetHostApiInfo(Pa_GetDeviceInfo(inParams.device)->hostApi)->type == paWASAPI) {
+		wasapiInfo.size = sizeof(PaWasapiStreamInfo);
+		wasapiInfo.hostApiType = paWASAPI;
+		wasapiInfo.version = 1;
+		wasapiInfo.threadPriority = eThreadPriorityProAudio;
+		wasapiInfo.flags = (paWinWasapiExclusive | paWinWasapiThreadPriority);
+		inParams.hostSpecificStreamInfo = (&wasapiInfo);
+	}
+	else {
+		inParams.hostApiSpecificStreamInfo = NULL;
+	}
 
     double sampleRate = (double)mAudioOptions->sampleRate();
     uint32_t framesPerBuffer = paFramesPerBufferUnspecified;
