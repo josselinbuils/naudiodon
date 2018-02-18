@@ -36,6 +36,8 @@ function AudioOutput(options) {
     write: (chunk, encoding, cb) => this.AudioOutAdon.write(chunk, cb)
   });
 
+  this.isActive = () => active;
+
   this.start = () => this.AudioOutAdon.start();
 
   // TODO Close only the stream instead of destroying all PortAudio context
