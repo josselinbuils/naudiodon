@@ -40,8 +40,14 @@ function AudioOutput(options) {
 
   // TODO Close only the stream instead of destroying all PortAudio context
   this.stop = () => {
-    active = false;
-    this.AudioOutAdon.quit(() => this.emit('stopped'));
+    return new Promise((resolve, reject) => {
+      if (active) {
+        active = false;
+        this.AudioOutAdon.quit(resolve);
+      } else {
+        reject(new Error('AudioOutput inactive'));
+      }
+    }).then(() => this.emit('stopped'));
   };
 
   // Triggered by readable stream
