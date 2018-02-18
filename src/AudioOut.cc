@@ -136,11 +136,6 @@ public:
     }
   }
 
-  void stop() {
-    Pa_StopStream(mStream);
-    Pa_Terminate();
-  }
-
   void addChunk(std::shared_ptr<AudioChunk> audioChunk) {
     mChunkQueue.enqueue(audioChunk);
   }
@@ -215,15 +210,6 @@ public:
     return errStr != std::string();
   }
 
-  void quit() {
-    std::unique_lock<std::mutex> lk(m);
-    mActive = false;
-    mChunkQueue.quit();
-    while (!mFinished) {
-      cv.wait(lk);
-    }
-  }
-
 private:
   std::shared_ptr<AudioOptions> mAudioOptions;
   ChunkQueue<std::shared_ptr<AudioChunk> > mChunkQueue;
@@ -286,32 +272,7 @@ class OutWorker : public Nan::AsyncWorker {
     std::shared_ptr<AudioChunk> mAudioChunk;
 };
 
-class QuitOutWorker : public Nan::AsyncWorker {
-  public:
-    QuitOutWorker(std::shared_ptr<OutContext> OutContext, Nan::Callback *callback)
-      : AsyncWorker(callback), mOutContext(OutContext) {}
-
-    ~QuitOutWorker() {}
-
-    void Execute() {
-      printf("QuitOutWorker: call quite()\n");
-      mOutContext->quit();
-    }
-
-    void HandleOKCallback () {
-      printf("HandleOKCallback()\n");
-      Nan::HandleScope scope;
-      printf("stop()\n");
-      mOutContext->stop();
-      printf("call callback()\n");
-      callback->Call(0, NULL);
-    }
-
-  private:
-    std::shared_ptr<OutContext> mOutContext;
-};
-
-AudioOut::AudioOut(Local<Object> options) { 
+AudioOut::AudioOut(Local<Object> options) {
   mOutContext = std::make_shared<OutContext>(std::make_shared<AudioOptions>(options), OutCallback);
 }
 AudioOut::~AudioOut() {}
@@ -347,16 +308,11 @@ NAN_METHOD(AudioOut::Write) {
 }
 
 NAN_METHOD(AudioOut::Quit) {
-  printf("Quit called\n");
-
   Local<Function> callback = Local<Function>::Cast(info[0]);
-  AudioOut* obj = Nan::ObjectWrap::Unwrap<AudioOut>(info.Holder());
 
-  printf("create QuitOutWorker\n");
+  Pa_Terminate();
+  (new Nan::Callback(callback))->Call(0, NULL);
 
-  AsyncQueueWorker(new QuitOutWorker(obj->getContext(), new Nan::Callback(callback)));
-
-  printf("set return value\n");
   info.GetReturnValue().SetUndefined();
 }
 
@@ -370,8 +326,12 @@ NAN_MODULE_INIT(AudioOut::Init) {
   SetPrototypeMethod(tpl, "quit", Quit);
 
   constructor().Reset(Nan::GetFunction(tpl).ToLocalChecked());
-  Nan::Set(target, Nan::New("AudioOut").ToLocalChecked(),
-    Nan::GetFunction(tpl).ToLocalChecked());
+
+  Nan::Set(
+    target,
+    Nan::New("AudioOut").ToLocalChecked(),
+    Nan::GetFunction(tpl).ToLocalChecked()
+  );
 }
 
 } // namespace streampunk

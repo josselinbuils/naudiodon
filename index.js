@@ -27,12 +27,7 @@ function AudioOutput(options) {
 
   let active = true;
 
-  try {
-    this.AudioOutAdon = new AudioOut(options);
-  } catch (error) {
-    active = false;
-    throw error;
-  }
+  this.AudioOutAdon = new AudioOut(options);
 
   Writable.call(this, {
     highWaterMark: 16384,
@@ -41,16 +36,18 @@ function AudioOutput(options) {
     write: (chunk, encoding, cb) => this.AudioOutAdon.write(chunk, cb)
   });
 
-  this.isActive = () => active;
-
   this.start = () => this.AudioOutAdon.start();
 
+  // TODO Close only the stream instead of destroying all PortAudio context
   this.stop = () => {
     active = false;
-    return new Promise(resolve => this.AudioOutAdon.quit(resolve));
+    this.AudioOutAdon.quit(() => this.emit('stopped'));
   };
 
-  this.on('finish', () => active && this.stop());
+  // Triggered by readable stream
+  this.on('finish', () => {
+    active && this.stop();
+  });
 }
 
 inherits(AudioOutput, Writable);
