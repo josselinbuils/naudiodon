@@ -21,6 +21,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <portaudio.h>
+#include <pa_win_wasapi.h>
 
 using namespace v8;
 
@@ -30,10 +31,10 @@ class AudioChunk {
 public:
   AudioChunk (Local<Object> chunk)
     : mPersistentChunk(new Persist(chunk)),
-      mChunk(Memory::makeNew((uint8_t *)node::Buffer::Data(chunk), (uint32_t)node::Buffer::Length(chunk)))
-    { }
-  ~AudioChunk() { }
-  
+      mChunk(Memory::makeNew((uint8_t *)node::Buffer::Data(chunk), (uint32_t)node::Buffer::Length(chunk))) {}
+
+  ~AudioChunk() {}
+
   std::shared_ptr<Memory> chunk() const { return mChunk; }
 
 private:
@@ -48,6 +49,7 @@ public:
       mCurOffset(0), mActive(true), mFinished(false) {
 
     PaError errCode = Pa_Initialize();
+
     if (errCode != paNoError) {
       std::string err = std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode);
       Nan::ThrowError(err.c_str());
@@ -59,46 +61,67 @@ public:
     memset(&outParams, 0, sizeof(PaStreamParameters));
 
     int32_t deviceID = (int32_t)mAudioOptions->deviceID();
-    if ((deviceID >= 0) && (deviceID < Pa_GetDeviceCount()))
+
+    if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
       outParams.device = (PaDeviceIndex)deviceID;
-    else
+    } else {
       outParams.device = Pa_GetDefaultOutputDevice();
-    if (outParams.device == paNoDevice)
+    }
+
+    if (outParams.device == paNoDevice) {
       Nan::ThrowError("No default output device");
+    }
+
     printf("Output device name is %s\n", Pa_GetDeviceInfo(outParams.device)->name);
 
     outParams.channelCount = mAudioOptions->channelCount();
-    if (outParams.channelCount > Pa_GetDeviceInfo(outParams.device)->maxOutputChannels)
+
+    if (outParams.channelCount > Pa_GetDeviceInfo(outParams.device)->maxOutputChannels) {
       Nan::ThrowError("Channel count exceeds maximum number of output channels for device");
+    }
 
     uint32_t sampleFormat = mAudioOptions->sampleFormat();
+
     switch(sampleFormat) {
-    case 8: outParams.sampleFormat = paInt8; break;
-    case 16: outParams.sampleFormat = paInt16; break;
-    case 24: outParams.sampleFormat = paInt24; break;
-    case 32: outParams.sampleFormat = paInt32; break;
-    default: Nan::ThrowError("Invalid sampleFormat");
+      case 8: outParams.sampleFormat = paInt8; break;
+      case 16: outParams.sampleFormat = paInt16; break;
+      case 24: outParams.sampleFormat = paInt24; break;
+      case 32: outParams.sampleFormat = paInt32; break;
+      default: Nan::ThrowError("Invalid sampleFormat");
     }
 
     outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultLowOutputLatency;
-    outParams.hostApiSpecificStreamInfo = NULL;
+
+    struct PaWasapiStreamInfo wasapiInfo;
+
+    if (Pa_GetHostApiInfo(Pa_GetDeviceInfo(outParams.device)->hostApi)->type == paWASAPI) {
+      printf("sapi device detected\n");
+      wasapiInfo.size = sizeof(PaWasapiStreamInfo);
+      wasapiInfo.hostApiType = paWASAPI;
+      wasapiInfo.version = 1;
+      wasapiInfo.flags = (paWinWasapiExclusive|paWinWasapiThreadPriority);
+      wasapiInfo.threadPriority = eThreadPriorityProAudio;
+      outParams.hostApiSpecificStreamInfo = (&wasapiInfo);
+    } else {
+      outParams.hostApiSpecificStreamInfo = NULL;
+    }
 
     double sampleRate = (double)mAudioOptions->sampleRate();
     uint32_t framesPerBuffer = paFramesPerBufferUnspecified;
 
     #ifdef __arm__
-    framesPerBuffer = 256;
-    outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultHighOutputLatency;
+      framesPerBuffer = 256;
+      outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultHighOutputLatency;
     #endif
 
-    errCode = Pa_OpenStream(&mStream, NULL, &outParams, sampleRate,
-                            framesPerBuffer, paNoFlag, cb, this);
+    errCode = Pa_OpenStream(&mStream, NULL, &outParams, sampleRate, framesPerBuffer, paNoFlag, cb, this);
+
     if (errCode != paNoError) {
       std::string err = std::string("Could not open stream: ") + Pa_GetErrorText(errCode);
       Nan::ThrowError(err.c_str());
     }
   }
-  
+
   ~OutContext() {
     Pa_StopStream(mStream);
     Pa_Terminate();
@@ -106,6 +129,7 @@ public:
 
   void start() {
     PaError errCode = Pa_StartStream(mStream);
+
     if (errCode != paNoError) {
       std::string err = std::string("Could not start output stream: ") + Pa_GetErrorText(errCode);
       return Nan::ThrowError(err.c_str());
@@ -126,11 +150,16 @@ public:
     uint32_t bytesRemaining = frameCount * mAudioOptions->channelCount() * mAudioOptions->sampleFormat() / 8;
 
     uint32_t active = isActive();
-    if (!active && (0 == mChunkQueue.size()) && 
-        (!mCurChunk || (mCurChunk && (bytesRemaining >= mCurChunk->chunk()->numBytes() - mCurOffset)))) {
+
+    if (
+      !active &&
+      (0 == mChunkQueue.size()) &&
+      (!mCurChunk || (mCurChunk && (bytesRemaining >= mCurChunk->chunk()->numBytes() - mCurOffset)))
+    ) {
       if (mCurChunk) {
         uint32_t bytesCopied = doCopy(mCurChunk->chunk(), dst, bytesRemaining);
         uint32_t missingBytes = bytesRemaining - bytesCopied;
+
         if (missingBytes > 0) {
           printf("Finishing - %d bytes not available for the last output buffer\n", missingBytes);
           memset(dst + bytesCopied, 0, missingBytes);
@@ -165,12 +194,14 @@ public:
   void checkStatus(uint32_t statusFlags) {
     if (statusFlags) {
       std::string err = std::string("portAudio status - ");
-      if (statusFlags & paOutputUnderflow)
+
+      if (statusFlags & paOutputUnderflow) {
         err += "output underflow ";
-      if (statusFlags & paOutputOverflow)
+      } else if (statusFlags & paOutputOverflow) {
         err += "output overflow ";
-      if (statusFlags & paPrimingOutput)
+      } else if (statusFlags & paPrimingOutput) {
         err += "priming output ";
+      }
 
       std::lock_guard<std::mutex> lk(m);
       mErrStr = err;
@@ -188,8 +219,9 @@ public:
     std::unique_lock<std::mutex> lk(m);
     mActive = false;
     mChunkQueue.quit();
-    while(!mFinished)
+    while (!mFinished) {
       cv.wait(lk);
+    }
   }
 
 private:
@@ -217,19 +249,20 @@ private:
   }
 };
 
-int OutCallback(const void *input, void *output, unsigned long frameCount, 
-               const PaStreamCallbackTimeInfo *timeInfo, 
-               PaStreamCallbackFlags statusFlags, void *userData) {
+int OutCallback(const void *input, void *output, unsigned long frameCount, const PaStreamCallbackTimeInfo *timeInfo,
+                PaStreamCallbackFlags statusFlags, void *userData) {
+
   OutContext *context = (OutContext *)userData;
   context->checkStatus(statusFlags);
+
   return context->fillBuffer(output, frameCount) ? paContinue : paComplete;
 }
 
 class OutWorker : public Nan::AsyncWorker {
   public:
     OutWorker(std::shared_ptr<OutContext> OutContext, Nan::Callback *callback, std::shared_ptr<AudioChunk> audioChunk)
-      : AsyncWorker(callback), mOutContext(OutContext), mAudioChunk(audioChunk) 
-    { }
+      : AsyncWorker(callback), mOutContext(OutContext), mAudioChunk(audioChunk) {}
+
     ~OutWorker() {}
 
     void Execute() {
@@ -239,6 +272,7 @@ class OutWorker : public Nan::AsyncWorker {
     void HandleOKCallback () {
       Nan::HandleScope scope;
       std::string errStr;
+
       if (mOutContext->getErrStr(errStr)) {
         Local<Value> argv[] = { Nan::Error(errStr.c_str()) };
         callback->Call(1, argv);
@@ -255,17 +289,21 @@ class OutWorker : public Nan::AsyncWorker {
 class QuitOutWorker : public Nan::AsyncWorker {
   public:
     QuitOutWorker(std::shared_ptr<OutContext> OutContext, Nan::Callback *callback)
-      : AsyncWorker(callback), mOutContext(OutContext)
-    { }
+      : AsyncWorker(callback), mOutContext(OutContext) {}
+
     ~QuitOutWorker() {}
 
     void Execute() {
+      printf("QuitOutWorker: call quite()\n");
       mOutContext->quit();
     }
 
     void HandleOKCallback () {
+      printf("HandleOKCallback()\n");
       Nan::HandleScope scope;
+      printf("stop()\n");
       mOutContext->stop();
+      printf("call callback()\n");
       callback->Call(0, NULL);
     }
 
@@ -287,12 +325,18 @@ NAN_METHOD(AudioOut::Start) {
 }
 
 NAN_METHOD(AudioOut::Write) {
-  if (info.Length() != 2)
-    return Nan::ThrowError("AudioOut Write expects 2 arguments");
-  if (!info[0]->IsObject())
-    return Nan::ThrowError("AudioOut Write requires a valid chunk buffer as the first parameter");
-  if (!info[1]->IsFunction())
-    return Nan::ThrowError("AudioOut Write requires a valid callback as the second parameter");
+
+  if (info.Length() != 2) {
+    return Nan::ThrowError("AudioOut.write requires 2 arguments");
+  }
+
+  if (!info[0]->IsObject()) {
+    return Nan::ThrowError("AudioOut.write requires a valid chunk buffer as first parameter");
+  }
+
+  if (!info[1]->IsFunction()) {
+    return Nan::ThrowError("AudioOut.write requires a valid callback as second parameter");
+  }
 
   Local<Object> chunkObj = Local<Object>::Cast(info[0]);
   Local<Function> callback = Local<Function>::Cast(info[1]);
@@ -303,15 +347,16 @@ NAN_METHOD(AudioOut::Write) {
 }
 
 NAN_METHOD(AudioOut::Quit) {
-  if (info.Length() != 1)
-    return Nan::ThrowError("AudioOut Quit expects 1 argument");
-  if (!info[0]->IsFunction())
-    return Nan::ThrowError("AudioOut Quit requires a valid callback as the parameter");
+  printf("Quit called\n");
 
   Local<Function> callback = Local<Function>::Cast(info[0]);
   AudioOut* obj = Nan::ObjectWrap::Unwrap<AudioOut>(info.Holder());
 
+  printf("create QuitOutWorker\n");
+
   AsyncQueueWorker(new QuitOutWorker(obj->getContext(), new Nan::Callback(callback)));
+
+  printf("set return value\n");
   info.GetReturnValue().SetUndefined();
 }
 

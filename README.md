@@ -104,45 +104,6 @@ rs.pipe(ao);
 ao.start();
 ```
 
-### Recording audio
-
-Recording audio invovles reading from an instance of `AudioInput`.
-
-```javascript
-var fs = require('fs');
-var portAudio = require('../index.js');
-
-// Create an instance of AudioInput, which is a ReadableStream
-var ai = new portAudio.AudioInput({
-  channelCount: 2,
-  sampleFormat: portAudio.SampleFormat16Bit,
-  sampleRate: 44100
-  deviceId : -1 // Use -1 or omit the deviceId to select the default device
-});
-
-// handle errors from the AudioInput
-ai.on('error', err => console.error);
-
-// Create a write stream to write out to a raw audio file
-var ws = fs.createWriteStream('rawAudio.raw');
-
-//Start streaming
-ai.pipe(ws);
-ai.start();
-
-```
-
-Note that this produces a raw audio file - wav headers would be required to create a wav file. However this basic example produces a file may be read by audio software such as Audacity, using the sample rate and format parameters set when establishing the stream.
-
-To stop the recording, call `ai.quit()`. For example:
-
-```javascript
-process.on('SIGINT', () => {
-  console.log('Received SIGINT. Stopping recording.');
-  ai.quit();
-});
-```
-
 ## Troubleshooting
 
 ### Linux - No Default Device Found

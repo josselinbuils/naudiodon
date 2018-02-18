@@ -13,58 +13,27 @@
   limitations under the License.
 */
 
-const util = require("util");
-const EventEmitter = require("events");
-const { Readable, Writable } = require('stream');
-const portAudioBindings = require("bindings")("naudiodon.node");
+const {inherits} = require('util');
+const {Writable} = require('stream');
+const {AudioOut, getDevices} = require('bindings')('naudiodon.node');
 
-// var SegfaultHandler = require('segfault-handler');
-// SegfaultHandler.registerHandler("crash.log");
-
-exports.SampleFormat8Bit = 8;
-exports.SampleFormat16Bit = 16;
-exports.SampleFormat24Bit = 24;
-exports.SampleFormat32Bit = 32;
-
-exports.getDevices = portAudioBindings.getDevices;
-
-function AudioInput(options) {
-  if (!(this instanceof AudioInput))
-    return new AudioInput(options);
-
-  this.AudioInAdon = new portAudioBindings.AudioIn(options);
-  Readable.call(this, {
-    highWaterMark: 16384,
-    objectMode: false,
-    read: size => {
-      this.AudioInAdon.read(size, (err, buf) => {
-        if (err)
-          console.error(err);
-          // this.emit('error', err); // causes Streampunk Microphone node to exit early...
-        else
-          this.push(buf);
-      });
-    }
-  });
-
-  this.start = () => this.AudioInAdon.start();
-  this.quit = cb => {
-    const quitCb = arguments[0];
-    this.AudioInAdon.quit(() => {
-      if (typeof quitCb === 'function')
-        quitCb();
-    });
-  }
-}
-util.inherits(AudioInput, Readable);
-exports.AudioInput = AudioInput;
+exports.getDevices = getDevices;
 
 function AudioOutput(options) {
-  if (!(this instanceof AudioOutput))
-    return new AudioOutput(options);
 
-  let Active = true;
-  this.AudioOutAdon = new portAudioBindings.AudioOut(options);
+  if (!(this instanceof AudioOutput)) {
+    return new AudioOutput(options);
+  }
+
+  let active = true;
+
+  try {
+    this.AudioOutAdon = new AudioOut(options);
+  } catch (error) {
+    active = false;
+    throw error;
+  }
+
   Writable.call(this, {
     highWaterMark: 16384,
     decodeStrings: false,
@@ -72,16 +41,17 @@ function AudioOutput(options) {
     write: (chunk, encoding, cb) => this.AudioOutAdon.write(chunk, cb)
   });
 
+  this.isActive = () => active;
+
   this.start = () => this.AudioOutAdon.start();
-  this.quit = cb => {
-    Active = false;
-    const quitCb = arguments[0];
-    this.AudioOutAdon.quit(() => {
-      if (typeof quitCb === 'function')
-        quitCb();
-    });
-  }
-  this.on('finish', () => { if (Active) this.quit(); });
+
+  this.stop = () => {
+    active = false;
+    return new Promise(resolve => this.AudioOutAdon.quit(resolve));
+  };
+
+  this.on('finish', () => active && this.stop());
 }
-util.inherits(AudioOutput, Writable);
+
+inherits(AudioOutput, Writable);
 exports.AudioOutput = AudioOutput;

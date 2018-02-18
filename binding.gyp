@@ -5,7 +5,6 @@
       "sources": [
         "src/naudiodon.cc",
         "src/GetDevices.cc",
-      	"src/AudioIn.cc",
       	"src/AudioOut.cc"
       ],
       "include_dirs": [
