@@ -13,14 +13,9 @@
   limitations under the License.
 */
 
-#include <nan.h>
-#include "AudioChunk.h"
 #include "AudioOut.h"
 #include "Params.h"
-#include "OutContext.h"
 #include <portaudio.h>
-
-using namespace v8;
 
 namespace streampunk {
 
@@ -98,6 +93,25 @@ NAN_METHOD(AudioOut::Write) {
 
   AsyncQueueWorker(new OutWorker(obj->getContext(), new Nan::Callback(callback), std::make_shared<AudioChunk>(chunkObj)));
   info.GetReturnValue().SetUndefined();
+}
+
+NAN_METHOD(AudioOut::New) {
+  if (info.IsConstructCall()) {
+
+    if (info.Length() != 1 || !info[0]->IsObject()) {
+      return Nan::ThrowError("AudioOut constructor requires a valid options object as the parameter");
+    }
+
+    v8::Local<v8::Object> options = v8::Local<v8::Object>::Cast(info[0]);
+    AudioOut *audioOut = new AudioOut(options);
+    audioOut->Wrap(info.This());
+    info.GetReturnValue().Set(info.This());
+  } else {
+    const int argc = 1;
+    v8::Local<v8::Value> argv[] = { info[0] };
+    v8::Local<v8::Function> cons = Nan::New(constructor());
+    info.GetReturnValue().Set(cons->NewInstance(Nan::GetCurrentContext(), argc, argv).ToLocalChecked());
+  }
 }
 
 NAN_METHOD(AudioOut::Quit) {
