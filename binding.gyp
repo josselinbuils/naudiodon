@@ -5,7 +5,8 @@
       "sources": [
         "src/naudiodon.cc",
         "src/GetDevices.cc",
-      	"src/AudioOut.cc"
+      	"src/AudioOut.cc",
+      	"src/OutContext.cc",
       ],
       "include_dirs": [
         "<!(node -e \"require('nan')\")", "portaudio/include"

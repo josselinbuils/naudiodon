@@ -40,6 +40,8 @@ function AudioOutput(options) {
 
   this.start = () => this.AudioOutAdon.start();
 
+  this.pause = () => this.AudioOutAdon.pause();
+
   // TODO Close only the stream instead of destroying all PortAudio context
   this.stop = () => {
     return new Promise((resolve, reject) => {

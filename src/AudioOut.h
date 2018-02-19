@@ -26,8 +26,9 @@ class AudioOut : public Nan::ObjectWrap {
 public:
   static NAN_MODULE_INIT(Init);
 
-  std::shared_ptr<OutContext> getContext() const { return mOutContext; }
-  void doStart();
+  std::shared_ptr<OutContext> getContext() const {
+    return mOutContext;
+  }
 
 private:
   explicit AudioOut(v8::Local<v8::Object> options);
@@ -35,11 +36,14 @@ private:
 
   static NAN_METHOD(New) {
     if (info.IsConstructCall()) {
-      if (!((info.Length() == 1) && (info[0]->IsObject())))
+
+      if (info.Length() != 1 || !info[0]->IsObject()) {
         return Nan::ThrowError("AudioOut constructor requires a valid options object as the parameter");
+      }
+
       v8::Local<v8::Object> options = v8::Local<v8::Object>::Cast(info[0]);
-      AudioOut *obj = new AudioOut(options);
-      obj->Wrap(info.This());
+      AudioOut *audioOut = new AudioOut(options);
+      audioOut->Wrap(info.This());
       info.GetReturnValue().Set(info.This());
     } else {
       const int argc = 1;
@@ -55,6 +59,7 @@ private:
   }
 
   static NAN_METHOD(Start);
+  static NAN_METHOD(Pause);
   static NAN_METHOD(Write);
   static NAN_METHOD(Quit);
 

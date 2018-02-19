@@ -13,24 +13,30 @@
   limitations under the License.
 */
 
-#ifndef PERSIST_H
-#define PERSIST_H
+#ifndef AUDIOCHUNK_H
+#define AUDIOCHUNK_H
 
-#include <memory>
+#include "Memory.h"
+#include "Persist.h"
 #include <nan.h>
 
 using namespace v8;
 
 namespace streampunk {
 
-class Persist {
-public:
-  Persist(v8::Local<v8::Object> object) 
-    : mPersistObj(object) {}
-  ~Persist() { mPersistObj.Reset(); }
+class AudioChunk {
+  public:
+  AudioChunk (Local<Object> chunk)
+    : mPersistentChunk(new Persist(chunk)),
+      mChunk(Memory::makeNew((uint8_t *)node::Buffer::Data(chunk), (uint32_t)node::Buffer::Length(chunk))) {}
 
-private:
-  Nan::Persistent<v8::Object> mPersistObj;
+  ~AudioChunk() {}
+
+  std::shared_ptr<Memory> chunk() const { return mChunk; }
+
+  private:
+  std::unique_ptr<Persist> mPersistentChunk;
+  std::shared_ptr<Memory> mChunk;
 };
 
 } // namespace streampunk
