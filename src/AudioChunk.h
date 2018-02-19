@@ -26,17 +26,17 @@ namespace streampunk {
 
 class AudioChunk {
   public:
-  AudioChunk (Local<Object> chunk)
-    : mPersistentChunk(new Persist(chunk)),
-      mChunk(Memory::makeNew((uint8_t *)node::Buffer::Data(chunk), (uint32_t)node::Buffer::Length(chunk))) {}
+  AudioChunk (Local<Object> inChunk)
+    : persistentChunk(new Persist(inChunk)),
+      chunk(Memory::makeNew((uint8_t *)node::Buffer::Data(inChunk), (uint32_t)node::Buffer::Length(inChunk))) {}
 
   ~AudioChunk() {}
 
-  std::shared_ptr<Memory> chunk() const { return mChunk; }
+  std::shared_ptr<Memory> getChunk() const { return chunk; }
 
   private:
-  std::unique_ptr<Persist> mPersistentChunk;
-  std::shared_ptr<Memory> mChunk;
+  std::unique_ptr<Persist> persistentChunk;
+  std::shared_ptr<Memory> chunk;
 };
 
 } // namespace streampunk

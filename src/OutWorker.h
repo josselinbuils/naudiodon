@@ -13,41 +13,34 @@
   limitations under the License.
 */
 
-#ifndef AUDIOOUT_H
-#define AUDIOOUT_H
-
-#include "AudioChunk.h"
-#include "OutContext.h"
-#include <nan.h>
-
-using namespace v8;
-
 namespace streampunk {
 
-class AudioOut : public Nan::ObjectWrap {
+class OutWorker : public Nan::AsyncWorker {
   public:
-  static NAN_MODULE_INIT(Init);
-  std::shared_ptr<OutContext> getContext() const { return outContext; }
+  OutWorker(std::shared_ptr<OutContext> OutContext, Nan::Callback *callback, std::shared_ptr<AudioChunk> audioChunk)
+    : AsyncWorker(callback), outContext(OutContext), audioChunk(audioChunk) {}
 
-  private:
-  explicit AudioOut(v8::Local<v8::Object> options);
+  ~OutWorker() {}
 
-  ~AudioOut();
-
-  static inline Nan::Persistent<v8::Function> & constructor() {
-    static Nan::Persistent<v8::Function> my_constructor;
-    return my_constructor;
+  void Execute() {
+    outContext->addChunk(audioChunk);
   }
 
-  static NAN_METHOD(New);
-  static NAN_METHOD(Pause);
-  static NAN_METHOD(Quit);
-  static NAN_METHOD(Start);
-  static NAN_METHOD(Write);
+  void HandleOKCallback () {
+    Nan::HandleScope scope;
+    std::string errStr;
 
+    if (outContext->getErrStr(errStr)) {
+      Local<Value> argv[] = { Nan::Error(errStr.c_str()) };
+      callback->Call(1, argv);
+    } else {
+      callback->Call(0, NULL);
+    }
+  }
+
+  private:
   std::shared_ptr<OutContext> outContext;
+  std::shared_ptr<AudioChunk> audioChunk;
 };
 
 } // namespace streampunk
-
-#endif

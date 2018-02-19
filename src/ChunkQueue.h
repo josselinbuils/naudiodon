@@ -26,12 +26,13 @@ namespace streampunk {
 template <class T>
 class ChunkQueue {
 public:
-  ChunkQueue(uint32_t maxQueue) : mActive(true), mMaxQueue(maxQueue), qu(), m(), cv() {}
+  ChunkQueue(uint32_t inputMaxQueue) : active(true), maxQueue(inputMaxQueue), qu(), m(), cv() {}
+
   ~ChunkQueue() {}
   
   void enqueue(T t) {
     std::unique_lock<std::mutex> lk(m);
-    while(mActive && (qu.size() >= mMaxQueue)) {
+    while(active && (qu.size() >= maxQueue)) {
       cv.wait(lk);
     }
     qu.push(t);
@@ -40,11 +41,11 @@ public:
   
   T dequeue() {
     std::unique_lock<std::mutex> lk(m);
-    while(mActive && qu.empty()) {
+    while(active && qu.empty()) {
       cv.wait(lk);
     }
     T val;
-    if (mActive) {
+    if (active) {
       val = qu.front();
       qu.pop();
       cv.notify_one();
@@ -59,16 +60,16 @@ public:
 
   void quit() {
     std::lock_guard<std::mutex> lk(m);
-    if ((0 == qu.size()) || (qu.size() >= mMaxQueue)) {
+    if ((0 == qu.size()) || (qu.size() >= maxQueue)) {
       // ensure release of any blocked thread
-      mActive = false;
+      active = false;
       cv.notify_all();
     }
   }
 
 private:
-  bool mActive;
-  uint32_t mMaxQueue;
+  bool active;
+  uint32_t maxQueue;
   std::queue<T> qu;
   mutable std::mutex m;
   std::condition_variable cv;

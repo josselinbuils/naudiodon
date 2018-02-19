@@ -21,8 +21,7 @@
 namespace streampunk {
 
 class Memory {
-public:
-
+  public:
   static std::shared_ptr<Memory> makeNew(uint32_t srcBytes) {
     return std::make_shared<Memory>(srcBytes);
   }
@@ -31,23 +30,23 @@ public:
     return std::make_shared<Memory>(buf, srcBytes);
   }
 
-  Memory(uint32_t numBytes): mOwnAlloc(true), mNumBytes(numBytes), mBuf(new uint8_t[mNumBytes]) {}
+  Memory(uint32_t nBytes): ownAlloc(true), numBytes(nBytes), buffer(new uint8_t[numBytes]) {}
 
-  Memory(uint8_t *buf, uint32_t numBytes): mOwnAlloc(false), mNumBytes(numBytes), mBuf(buf) {}
+  Memory(uint8_t *buf, uint32_t nBytes): ownAlloc(false), numBytes(nBytes), buffer(buf) {}
 
   ~Memory() {
-    if (mOwnAlloc) {
-      delete[] mBuf;
+    if (ownAlloc) {
+      delete[] buffer;
     }
   }
 
-  uint32_t numBytes() const { return mNumBytes; }
-  uint8_t *buf() const { return mBuf; }
+  uint32_t getNumBytes() const { return numBytes; }
+  uint8_t *getBuffer() const { return buffer; }
 
-private:
-  const bool mOwnAlloc;
-  const uint32_t mNumBytes;
-  uint8_t *const mBuf;
+  private:
+  const bool ownAlloc;
+  const uint32_t numBytes;
+  uint8_t *const buffer;
 };
 
 } // namespace streampunk

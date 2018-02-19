@@ -16,9 +16,9 @@
 #ifndef OUTCONTEXT_H
 #define OUTCONTEXT_H
 
+#include "AudioOptions.h"
 #include "ChunkQueue.h"
 #include "Memory.h"
-#include "Params.h"
 #include <mutex>
 #include <condition_variable>
 #include <portaudio.h>
@@ -28,7 +28,7 @@ namespace streampunk {
 class OutContext {
   public:
 
-  OutContext(std::shared_ptr<AudioOptions> audioOptions, PaStreamCallback *cb);
+  OutContext(std::shared_ptr<AudioOptions> audioOptions);
 
   ~OutContext();
 
@@ -40,19 +40,19 @@ class OutContext {
   void stop();
 
   private:
-  std::shared_ptr<AudioOptions> mAudioOptions;
-  ChunkQueue<std::shared_ptr<AudioChunk> > mChunkQueue;
-  std::shared_ptr<AudioChunk> mCurChunk;
-  PaStream* mStream;
-  uint32_t mCurOffset;
-  bool mActive;
-  bool mFinished;
-  std::string mErrStr;
+  std::shared_ptr<AudioOptions> audioOptions;
+  ChunkQueue<std::shared_ptr<AudioChunk> > chunkQueue;
+  std::shared_ptr<AudioChunk> curChunk;
+  PaStream *stream;
+  uint32_t curOffset;
+  bool active;
+  bool finished;
+  std::string errorString;
   mutable std::mutex m;
   std::condition_variable cv;
 
-  bool isActive() const;
   uint32_t doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes);
+  bool isActive() const;
 };
 
 } // namespace streampunk
