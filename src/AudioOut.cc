@@ -20,6 +20,8 @@
 
 namespace streampunk {
 
+// Public
+
 AudioOut::AudioOut(Local<Object> options) {
   outContext = std::make_shared<OutContext>(std::make_shared<AudioOptions>(options));
 }

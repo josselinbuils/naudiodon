@@ -26,8 +26,8 @@ namespace streampunk {
 
 class AudioOut : public Nan::ObjectWrap {
   public:
-  static NAN_MODULE_INIT(Init);
   std::shared_ptr<OutContext> getContext() const { return outContext; }
+  static NAN_MODULE_INIT(Init);
 
   private:
   explicit AudioOut(v8::Local<v8::Object> options);

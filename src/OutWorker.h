@@ -39,8 +39,8 @@ class OutWorker : public Nan::AsyncWorker {
   }
 
   private:
-  std::shared_ptr<OutContext> outContext;
   std::shared_ptr<AudioChunk> audioChunk;
+  std::shared_ptr<OutContext> outContext;
 };
 
 } // namespace streampunk

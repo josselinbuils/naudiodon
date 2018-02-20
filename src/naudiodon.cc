@@ -19,6 +19,8 @@
 
 NAN_MODULE_INIT(Init) {
 
+  streampunk::AudioOut::Init(target);
+
   Nan::Set(
     target,
     Nan::New("getDevices").ToLocalChecked(),
@@ -26,8 +28,6 @@ NAN_MODULE_INIT(Init) {
       Nan::New<v8::FunctionTemplate>(streampunk::GetDevices)
     ).ToLocalChecked()
   );
-
-  streampunk::AudioOut::Init(target);
 }
 
 NODE_MODULE(portAudio, Init);

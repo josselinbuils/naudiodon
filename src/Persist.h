@@ -25,8 +25,7 @@ namespace streampunk {
 
 class Persist {
 public:
-  Persist(v8::Local<v8::Object> object) 
-    : persistObj(object) {}
+  Persist(v8::Local<v8::Object> object) : persistObj(object) {}
   ~Persist() { persistObj.Reset(); }
 
 private:

@@ -35,8 +35,8 @@ class AudioChunk {
   std::shared_ptr<Memory> getChunk() const { return chunk; }
 
   private:
-  std::unique_ptr<Persist> persistentChunk;
   std::shared_ptr<Memory> chunk;
+  std::unique_ptr<Persist> persistentChunk;
 };
 
 } // namespace streampunk

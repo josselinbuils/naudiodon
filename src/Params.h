@@ -38,11 +38,6 @@ class Params {
     return val;
   }
 
-  std::string unpackValue(Local<Value> val) {
-    Local<Array> valueArray = Local<Array>::Cast(val);
-    return *String::Utf8Value(valueArray->Get(0));
-  }
-
   bool unpackBool(Local<Object> tags, const std::string& key, bool dflt) {
     bool result = dflt;
     Local<Value> val = getKey(tags, key);
@@ -74,7 +69,12 @@ class Params {
     }
 
     return result;
-  } 
+  }
+
+  std::string unpackValue(Local<Value> val) {
+    Local<Array> valueArray = Local<Array>::Cast(val);
+    return *String::Utf8Value(valueArray->Get(0));
+  }
 
   private:
   Params(const Params &);

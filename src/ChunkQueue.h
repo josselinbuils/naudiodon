@@ -25,19 +25,10 @@ namespace streampunk {
 
 template <class T>
 class ChunkQueue {
-public:
+  public:
   ChunkQueue(uint32_t inputMaxQueue) : active(true), maxQueue(inputMaxQueue), qu(), m(), cv() {}
 
   ~ChunkQueue() {}
-  
-  void enqueue(T t) {
-    std::unique_lock<std::mutex> lk(m);
-    while(active && (qu.size() >= maxQueue)) {
-      cv.wait(lk);
-    }
-    qu.push(t);
-    cv.notify_one();
-  }
   
   T dequeue() {
     std::unique_lock<std::mutex> lk(m);
@@ -58,6 +49,15 @@ public:
     return qu.size();
   }
 
+  void enqueue(T t) {
+    std::unique_lock<std::mutex> lk(m);
+    while(active && (qu.size() >= maxQueue)) {
+      cv.wait(lk);
+    }
+    qu.push(t);
+    cv.notify_one();
+  }
+
   void quit() {
     std::lock_guard<std::mutex> lk(m);
     if ((0 == qu.size()) || (qu.size() >= maxQueue)) {
@@ -67,12 +67,12 @@ public:
     }
   }
 
-private:
+  private:
   bool active;
+  std::condition_variable cv;
+  mutable std::mutex m;
   uint32_t maxQueue;
   std::queue<T> qu;
-  mutable std::mutex m;
-  std::condition_variable cv;
 };
 
 } // namespace streampunk

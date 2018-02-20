@@ -35,11 +35,11 @@ class AudioOptions : public Params {
 
   ~AudioOptions() {}
 
-  uint32_t getDeviceID() const  { return deviceID; }
-  uint32_t getSampleRate() const  { return sampleRate; }
   uint32_t getChannelCount() const  { return channelCount; }
-  uint32_t getSampleFormat() const  { return sampleFormat; }
+  uint32_t getDeviceID() const  { return deviceID; }
   uint32_t getMaxQueue() const  { return maxQueue; }
+  uint32_t getSampleFormat() const  { return sampleFormat; }
+  uint32_t getSampleRate() const  { return sampleRate; }
 
   std::string toString() const  { 
     std::stringstream ss;
@@ -61,11 +61,11 @@ class AudioOptions : public Params {
   }
 
   private:
-  uint32_t deviceID;
-  uint32_t sampleRate;
   uint32_t channelCount;
-  uint32_t sampleFormat;
+  uint32_t deviceID;
   uint32_t maxQueue;
+  uint32_t sampleFormat;
+  uint32_t sampleRate;
 };
 
 } // namespace streampunk

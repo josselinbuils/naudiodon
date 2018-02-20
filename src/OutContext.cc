@@ -32,6 +32,8 @@ namespace streampunk {
     return context->fillBuffer(output, frameCount) ? paContinue : paComplete;
   }
 
+  // Public
+
   OutContext::OutContext(std::shared_ptr<AudioOptions> audioOptions)
     : audioOptions(audioOptions), chunkQueue(audioOptions->getMaxQueue()),
       curOffset(0), active(true), finished(false) {
@@ -114,26 +116,25 @@ namespace streampunk {
     Pa_Terminate();
   }
 
-  void OutContext::start() {
-    PaError errCode = Pa_StartStream(stream);
-
-    if (errCode != paNoError) {
-      std::string err = std::string("Could not start output stream: ") + Pa_GetErrorText(errCode);
-      return Nan::ThrowError(err.c_str());
-    }
-  }
-
-  void OutContext::stop() {
-    PaError errCode = Pa_StopStream(stream);
-
-    if (errCode != paNoError) {
-      std::string err = std::string("Could not stop output stream: ") + Pa_GetErrorText(errCode);
-      return Nan::ThrowError(err.c_str());
-    }
-  }
-
   void OutContext::addChunk(std::shared_ptr<AudioChunk> audioChunk) {
     chunkQueue.enqueue(audioChunk);
+  }
+
+  void OutContext::checkStatus(uint32_t statusFlags) {
+    if (statusFlags) {
+      std::string err = std::string("portAudio status - ");
+
+      if (statusFlags & paOutputUnderflow) {
+        err += "output underflow ";
+      } else if (statusFlags & paOutputOverflow) {
+        err += "output overflow ";
+      } else if (statusFlags & paPrimingOutput) {
+        err += "priming output ";
+      }
+
+      std::lock_guard<std::mutex> lk(m);
+      errorString = err;
+    }
   }
 
   bool OutContext::fillBuffer(void *buf, uint32_t frameCount) {
@@ -182,23 +183,6 @@ namespace streampunk {
     return !finished;
   }
 
-  void OutContext::checkStatus(uint32_t statusFlags) {
-    if (statusFlags) {
-      std::string err = std::string("portAudio status - ");
-
-      if (statusFlags & paOutputUnderflow) {
-        err += "output underflow ";
-      } else if (statusFlags & paOutputOverflow) {
-        err += "output overflow ";
-      } else if (statusFlags & paPrimingOutput) {
-        err += "priming output ";
-      }
-
-      std::lock_guard<std::mutex> lk(m);
-      errorString = err;
-    }
-  }
-
   bool OutContext::getErrStr(std::string &errStr) {
     std::lock_guard<std::mutex> lk(m);
     errStr = errorString;
@@ -206,16 +190,36 @@ namespace streampunk {
     return errStr != std::string();
   }
 
-  bool OutContext::isActive() const {
-    std::unique_lock<std::mutex> lk(m);
-    return active;
+  void OutContext::start() {
+    PaError errCode = Pa_StartStream(stream);
+
+    if (errCode != paNoError) {
+      std::string err = std::string("Could not start output stream: ") + Pa_GetErrorText(errCode);
+      return Nan::ThrowError(err.c_str());
+    }
   }
+
+  void OutContext::stop() {
+    PaError errCode = Pa_StopStream(stream);
+
+    if (errCode != paNoError) {
+      std::string err = std::string("Could not stop output stream: ") + Pa_GetErrorText(errCode);
+      return Nan::ThrowError(err.c_str());
+    }
+  }
+
+  // Private
 
   uint32_t OutContext::doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes) {
     uint32_t curChunkBytes = chunk->getNumBytes() - curOffset;
     uint32_t thisChunkBytes = std::min<uint32_t>(curChunkBytes, numBytes);
     memcpy(dst, chunk->getBuffer() + curOffset, thisChunkBytes);
     return thisChunkBytes;
+  }
+
+  bool OutContext::isActive() const {
+    std::unique_lock<std::mutex> lk(m);
+    return active;
   }
 
 } // namespace streampunk

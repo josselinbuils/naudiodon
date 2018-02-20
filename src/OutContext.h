@@ -40,16 +40,16 @@ class OutContext {
   void stop();
 
   private:
-  std::shared_ptr<AudioOptions> audioOptions;
-  ChunkQueue<std::shared_ptr<AudioChunk> > chunkQueue;
-  std::shared_ptr<AudioChunk> curChunk;
-  PaStream *stream;
-  uint32_t curOffset;
   bool active;
-  bool finished;
-  std::string errorString;
-  mutable std::mutex m;
+  std::shared_ptr<AudioOptions> audioOptions;
+  ChunkQueue<std::shared_ptr<AudioChunk>> chunkQueue;
+  std::shared_ptr<AudioChunk> curChunk;
+  uint32_t curOffset;
   std::condition_variable cv;
+  std::string errorString;
+  bool finished;
+  mutable std::mutex m;
+  PaStream *stream;
 
   uint32_t doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes);
   bool isActive() const;

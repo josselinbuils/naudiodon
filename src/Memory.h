@@ -40,13 +40,13 @@ class Memory {
     }
   }
 
-  uint32_t getNumBytes() const { return numBytes; }
   uint8_t *getBuffer() const { return buffer; }
+  uint32_t getNumBytes() const { return numBytes; }
 
   private:
-  const bool ownAlloc;
-  const uint32_t numBytes;
   uint8_t *const buffer;
+  const uint32_t numBytes;
+  const bool ownAlloc;
 };
 
 } // namespace streampunk
