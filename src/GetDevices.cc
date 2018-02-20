@@ -13,7 +13,6 @@
   limitations under the License.
 */
 
-#include <nan.h>
 #include "GetDevices.h"
 #include <portaudio.h>
 

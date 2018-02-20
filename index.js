@@ -15,8 +15,13 @@
 
 const {inherits} = require('util');
 const {Writable} = require('stream');
-const {AudioOut, getDevices} = require('bindings')('naudiodon.node');
+const {getDevices, OutContext} = require('bindings')('naudiodon.node');
 
+const outContext = new OutContext();
+
+inherits(AudioOutput, Writable);
+
+exports.AudioOutput = AudioOutput;
 exports.getDevices = getDevices;
 
 function AudioOutput(options) {
@@ -25,40 +30,20 @@ function AudioOutput(options) {
     return new AudioOutput(options);
   }
 
-  let active = true;
-
-  this.AudioOutAdon = new AudioOut(options);
-
   Writable.call(this, {
     highWaterMark: 16384,
     decodeStrings: false,
     objectMode: false,
-    write: (chunk, encoding, cb) => this.AudioOutAdon.write(chunk, cb)
+    write: (chunk, encoding, cb) => outContext.write(chunk, cb),
   });
 
-  this.isActive = () => active;
+  outContext.openStream(options);
 
-  this.start = () => this.AudioOutAdon.start();
-
-  this.pause = () => this.AudioOutAdon.pause();
-
-  // TODO Close only the stream instead of destroying all PortAudio context
-  this.stop = () => {
-    return new Promise((resolve, reject) => {
-      if (active) {
-        active = false;
-        this.AudioOutAdon.quit(resolve);
-      } else {
-        reject(new Error('AudioOutput inactive'));
-      }
-    }).then(() => this.emit('stopped'));
-  };
+  this.isActive = () => outContext.isActive();
+  this.pause = () => outContext.pause();
+  this.start = () => outContext.start();
+  this.stop = () => outContext.pause();
 
   // Triggered by readable stream
-  this.on('finish', () => {
-    active && this.stop();
-  });
+  this.on('finish', () => this.isActive() && this.stop());
 }
-
-inherits(AudioOutput, Writable);
-exports.AudioOutput = AudioOutput;

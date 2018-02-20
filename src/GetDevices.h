@@ -16,6 +16,8 @@
 #ifndef GETDEVICES_H
 #define GETDEVICES_H
 
+#include <nan.h>
+
 namespace streampunk {
 
 NAN_METHOD(GetDevices);

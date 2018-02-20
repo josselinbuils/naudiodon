@@ -24,11 +24,11 @@ using namespace v8;
 namespace streampunk {
 
 class Persist {
-public:
+  public:
   Persist(v8::Local<v8::Object> object) : persistObj(object) {}
   ~Persist() { persistObj.Reset(); }
 
-private:
+  private:
   Nan::Persistent<v8::Object> persistObj;
 };
 

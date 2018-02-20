@@ -15,6 +15,7 @@
 
 #include "AudioChunk.h"
 #include "OutContext.h"
+#include "OutWorker.h"
 #include "Persist.h"
 #include <nan.h>
 #include <pa_win_wasapi.h>
@@ -34,80 +35,13 @@ namespace streampunk {
 
   // Public
 
-  OutContext::OutContext(std::shared_ptr<AudioOptions> audioOptions)
-    : audioOptions(audioOptions), chunkQueue(audioOptions->getMaxQueue()),
-      curOffset(0), active(true), finished(false) {
+  OutContext::OutContext()
+    : chunkQueue(2), curOffset(0), active(true), finished(false) {
 
     PaError errCode = Pa_Initialize();
 
     if (errCode != paNoError) {
       std::string err = std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode);
-      Nan::ThrowError(err.c_str());
-    }
-
-    printf("Output %s\n", audioOptions->toString().c_str());
-
-    PaStreamParameters outParams;
-    memset(&outParams, 0, sizeof(PaStreamParameters));
-
-    int32_t deviceID = (int32_t)audioOptions->getDeviceID();
-
-    if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
-      outParams.device = (PaDeviceIndex)deviceID;
-    } else {
-      outParams.device = Pa_GetDefaultOutputDevice();
-    }
-
-    if (outParams.device == paNoDevice) {
-      Nan::ThrowError("No default output device");
-    }
-
-    printf("Output device name is %s\n", Pa_GetDeviceInfo(outParams.device)->name);
-
-    outParams.channelCount = audioOptions->getChannelCount();
-
-    if (outParams.channelCount > Pa_GetDeviceInfo(outParams.device)->maxOutputChannels) {
-      Nan::ThrowError("Channel count exceeds maximum number of output channels for device");
-    }
-
-    uint32_t sampleFormat = audioOptions->getSampleFormat();
-
-    switch(sampleFormat) {
-      case 8: outParams.sampleFormat = paInt8; break;
-      case 16: outParams.sampleFormat = paInt16; break;
-      case 24: outParams.sampleFormat = paInt24; break;
-      case 32: outParams.sampleFormat = paInt32; break;
-      default: Nan::ThrowError("Invalid sampleFormat");
-    }
-
-    outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultLowOutputLatency;
-
-    struct PaWasapiStreamInfo wasapiInfo;
-
-    if (Pa_GetHostApiInfo(Pa_GetDeviceInfo(outParams.device)->hostApi)->type == paWASAPI) {
-      printf("sapi device detected\n");
-      wasapiInfo.size = sizeof(PaWasapiStreamInfo);
-      wasapiInfo.hostApiType = paWASAPI;
-      wasapiInfo.version = 1;
-      wasapiInfo.flags = (paWinWasapiExclusive|paWinWasapiThreadPriority);
-      wasapiInfo.threadPriority = eThreadPriorityProAudio;
-      outParams.hostApiSpecificStreamInfo = (&wasapiInfo);
-    } else {
-      outParams.hostApiSpecificStreamInfo = NULL;
-    }
-
-    double sampleRate = (double)audioOptions->getSampleRate();
-    uint32_t framesPerBuffer = paFramesPerBufferUnspecified;
-
-    #ifdef __arm__
-      framesPerBuffer = 256;
-      outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultHighOutputLatency;
-    #endif
-
-    errCode = Pa_OpenStream(&stream, NULL, &outParams, sampleRate, framesPerBuffer, paNoFlag, &streamCallback, this);
-
-    if (errCode != paNoError) {
-      std::string err = std::string("Could not open stream: ") + Pa_GetErrorText(errCode);
       Nan::ThrowError(err.c_str());
     }
   }
@@ -190,24 +124,6 @@ namespace streampunk {
     return errStr != std::string();
   }
 
-  void OutContext::start() {
-    PaError errCode = Pa_StartStream(stream);
-
-    if (errCode != paNoError) {
-      std::string err = std::string("Could not start output stream: ") + Pa_GetErrorText(errCode);
-      return Nan::ThrowError(err.c_str());
-    }
-  }
-
-  void OutContext::stop() {
-    PaError errCode = Pa_StopStream(stream);
-
-    if (errCode != paNoError) {
-      std::string err = std::string("Could not stop output stream: ") + Pa_GetErrorText(errCode);
-      return Nan::ThrowError(err.c_str());
-    }
-  }
-
   // Private
 
   uint32_t OutContext::doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes) {
@@ -217,9 +133,195 @@ namespace streampunk {
     return thisChunkBytes;
   }
 
+  NAN_MODULE_INIT(OutContext::Init) {
+    Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+    tpl->SetClassName(Nan::New("OutContext").ToLocalChecked());
+    tpl->InstanceTemplate()->SetInternalFieldCount(1);
+
+    SetPrototypeMethod(tpl, "isActive", IsActive);
+    SetPrototypeMethod(tpl, "openStream", OpenStream);
+    SetPrototypeMethod(tpl, "pause", Pause);
+    SetPrototypeMethod(tpl, "start", Start);
+    SetPrototypeMethod(tpl, "stop", Stop);
+    SetPrototypeMethod(tpl, "write", Write);
+
+    constructor().Reset(Nan::GetFunction(tpl).ToLocalChecked());
+
+    Nan::Set(
+      target,
+      Nan::New("OutContext").ToLocalChecked(),
+      Nan::GetFunction(tpl).ToLocalChecked()
+    );
+  }
+
   bool OutContext::isActive() const {
     std::unique_lock<std::mutex> lk(m);
     return active;
+  }
+
+  NAN_METHOD(OutContext::IsActive) {
+    OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+    info.GetReturnValue().Set(outContext->isActive());
+  }
+
+  NAN_METHOD(OutContext::New) {
+    if (info.IsConstructCall()) {
+      OutContext *outContext = new OutContext();
+      outContext->Wrap(info.This());
+      info.GetReturnValue().Set(info.This());
+    }
+  }
+
+  void OutContext::openStream(AudioOptions *audioOptions) {
+
+    this->active = true;
+    this->audioOptions = audioOptions;
+    this->curOffset = 0;
+    this->finished = false;
+
+    printf("Output %s\n", audioOptions->toString().c_str());
+
+    PaStreamParameters outParams;
+    memset(&outParams, 0, sizeof(PaStreamParameters));
+
+    int32_t deviceID = (int32_t)audioOptions->getDeviceID();
+
+    if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
+      outParams.device = (PaDeviceIndex)deviceID;
+    } else {
+      outParams.device = Pa_GetDefaultOutputDevice();
+    }
+
+    if (outParams.device == paNoDevice) {
+      Nan::ThrowError("No default output device");
+    }
+
+    printf("Output device name is %s\n", Pa_GetDeviceInfo(outParams.device)->name);
+
+    outParams.channelCount = audioOptions->getChannelCount();
+
+    if (outParams.channelCount > Pa_GetDeviceInfo(outParams.device)->maxOutputChannels) {
+      Nan::ThrowError("Channel count exceeds maximum number of output channels for device");
+    }
+
+    uint32_t sampleFormat = audioOptions->getSampleFormat();
+
+    switch(sampleFormat) {
+      case 8: outParams.sampleFormat = paInt8; break;
+      case 16: outParams.sampleFormat = paInt16; break;
+      case 24: outParams.sampleFormat = paInt24; break;
+      case 32: outParams.sampleFormat = paInt32; break;
+      default: Nan::ThrowError("Invalid sampleFormat");
+    }
+
+    outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultLowOutputLatency;
+
+    struct PaWasapiStreamInfo wasapiInfo;
+
+    if (Pa_GetHostApiInfo(Pa_GetDeviceInfo(outParams.device)->hostApi)->type == paWASAPI) {
+      printf("Wasapi device detected\n");
+      wasapiInfo.size = sizeof(PaWasapiStreamInfo);
+      wasapiInfo.hostApiType = paWASAPI;
+      wasapiInfo.version = 1;
+      wasapiInfo.flags = (paWinWasapiExclusive|paWinWasapiThreadPriority);
+      wasapiInfo.threadPriority = eThreadPriorityProAudio;
+      outParams.hostApiSpecificStreamInfo = (&wasapiInfo);
+    } else {
+      outParams.hostApiSpecificStreamInfo = NULL;
+    }
+
+    double sampleRate = (double)audioOptions->getSampleRate();
+    uint32_t framesPerBuffer = paFramesPerBufferUnspecified;
+
+    #ifdef __arm__
+      framesPerBuffer = 256;
+      outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultHighOutputLatency;
+    #endif
+
+    PaError errCode = Pa_OpenStream(&stream, NULL, &outParams, sampleRate, framesPerBuffer, paNoFlag, &streamCallback, this);
+
+    if (errCode != paNoError) {
+      std::string err = std::string("Could not open stream: ") + Pa_GetErrorText(errCode);
+      Nan::ThrowError(err.c_str());
+    }
+  }
+
+  NAN_METHOD(OutContext::OpenStream) {
+    OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+
+    if (info.Length() != 1 || !info[0]->IsObject()) {
+      return Nan::ThrowError("Invalid options object");
+    }
+
+    v8::Local<v8::Object> options = v8::Local<v8::Object>::Cast(info[0]);
+    outContext->openStream(new AudioOptions(options));
+  }
+
+  void OutContext::pause() {
+    PaError errCode = Pa_StopStream(stream);
+
+    if (errCode != paNoError) {
+      std::string err = std::string("Could not stop output stream: ") + Pa_GetErrorText(errCode);
+      return Nan::ThrowError(err.c_str());
+    }
+  }
+
+  NAN_METHOD(OutContext::Pause) {
+    OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+    outContext->pause();
+    info.GetReturnValue().SetUndefined();
+  }
+
+  void OutContext::start() {
+    PaError errCode = Pa_StartStream(stream);
+
+    if (errCode != paNoError) {
+      std::string err = std::string("Could not start output stream: ") + Pa_GetErrorText(errCode);
+      return Nan::ThrowError(err.c_str());
+    }
+  }
+
+  NAN_METHOD(OutContext::Start) {
+    OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+    outContext->start();
+    info.GetReturnValue().SetUndefined();
+  }
+
+  void OutContext::stop() {
+    PaError errCode = Pa_CloseStream(stream);
+
+    if (errCode != paNoError) {
+      std::string err = std::string("Could not close output stream: ") + Pa_GetErrorText(errCode);
+      return Nan::ThrowError(err.c_str());
+    }
+  }
+
+  NAN_METHOD(OutContext::Stop) {
+    OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+    outContext->stop();
+    info.GetReturnValue().SetUndefined();
+  }
+
+  NAN_METHOD(OutContext::Write) {
+
+    if (info.Length() != 2) {
+      return Nan::ThrowError("Requires 2 arguments");
+    }
+
+    if (!info[0]->IsObject()) {
+      return Nan::ThrowError("First parameter is not a valid chunk buffer");
+    }
+
+    if (!info[1]->IsFunction()) {
+      return Nan::ThrowError("Second parameter is not a valid callback");
+    }
+
+    Local<Object> chunkObj = Local<Object>::Cast(info[0]);
+    Local<Function> callback = Local<Function>::Cast(info[1]);
+    OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+
+    AsyncQueueWorker(new OutWorker(outContext, new Nan::Callback(callback), std::make_shared<AudioChunk>(chunkObj)));
+    info.GetReturnValue().SetUndefined();
   }
 
 } // namespace streampunk

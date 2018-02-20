@@ -15,11 +15,11 @@
 
 #include <nan.h>
 #include "GetDevices.h"
-#include "AudioOut.h"
+#include "OutContext.h"
 
 NAN_MODULE_INIT(Init) {
 
-  streampunk::AudioOut::Init(target);
+  streampunk::OutContext::Init(target);
 
   Nan::Set(
     target,

@@ -17,8 +17,8 @@ namespace streampunk {
 
 class OutWorker : public Nan::AsyncWorker {
   public:
-  OutWorker(std::shared_ptr<OutContext> OutContext, Nan::Callback *callback, std::shared_ptr<AudioChunk> audioChunk)
-    : AsyncWorker(callback), outContext(OutContext), audioChunk(audioChunk) {}
+  OutWorker(OutContext *inOutContext, Nan::Callback *callback, std::shared_ptr<AudioChunk> audioChunk)
+    : AsyncWorker(callback), outContext(inOutContext), audioChunk(audioChunk) {}
 
   ~OutWorker() {}
 
@@ -40,7 +40,7 @@ class OutWorker : public Nan::AsyncWorker {
 
   private:
   std::shared_ptr<AudioChunk> audioChunk;
-  std::shared_ptr<OutContext> outContext;
+  OutContext *outContext;
 };
 
 } // namespace streampunk

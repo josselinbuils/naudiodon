@@ -16,6 +16,7 @@
 #ifndef OUTCONTEXT_H
 #define OUTCONTEXT_H
 
+#include "AudioChunk.h"
 #include "AudioOptions.h"
 #include "ChunkQueue.h"
 #include "Memory.h"
@@ -25,23 +26,25 @@
 
 namespace streampunk {
 
-class OutContext {
+class OutContext : public Nan::ObjectWrap {
   public:
-
-  OutContext(std::shared_ptr<AudioOptions> audioOptions);
-
   ~OutContext();
-
   void addChunk(std::shared_ptr<AudioChunk> audioChunk);
   void checkStatus(uint32_t statusFlags);
-  bool fillBuffer(void *buf, uint32_t frameCount);
   bool getErrStr(std::string& errStr);
-  void start();
-  void stop();
+  bool fillBuffer(void *buf, uint32_t frameCount);
+  static NAN_MODULE_INIT(Init);
 
   private:
+  explicit OutContext();
+
+  static inline Nan::Persistent<v8::Function> & constructor() {
+    static Nan::Persistent<v8::Function> my_constructor;
+    return my_constructor;
+  }
+
   bool active;
-  std::shared_ptr<AudioOptions> audioOptions;
+  AudioOptions *audioOptions;
   ChunkQueue<std::shared_ptr<AudioChunk>> chunkQueue;
   std::shared_ptr<AudioChunk> curChunk;
   uint32_t curOffset;
@@ -53,6 +56,17 @@ class OutContext {
 
   uint32_t doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes);
   bool isActive() const;
+  static NAN_METHOD(IsActive);
+  static NAN_METHOD(New);
+  void openStream(AudioOptions *audioOptions);
+  static NAN_METHOD(OpenStream);
+  void pause();
+  static NAN_METHOD(Pause);
+  void start();
+  static NAN_METHOD(Start);
+  void stop();
+  static NAN_METHOD(Stop);
+  static NAN_METHOD(Write);
 };
 
 } // namespace streampunk
