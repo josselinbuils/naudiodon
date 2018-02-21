@@ -28,7 +28,7 @@ int streamCallback(const void *input, void *output, unsigned long frameCount, co
                    PaStreamCallbackFlags statusFlags, void *userData) {
 
 	OutContext *context = (OutContext *)userData;
-	context->checkStatus(statusFlags);
+	// context->checkStatus(statusFlags);
 
 	return context->fillBuffer(output, frameCount) ? paContinue : paComplete;
 }
@@ -113,7 +113,6 @@ bool OutContext::fillBuffer(void *buf, uint32_t frameCount) {
 			}
 		}
 	}
-
 	return !finished;
 }
 
@@ -124,23 +123,15 @@ bool OutContext::getErrStr(std::string &errStr) {
 	return errStr != std::string();
 }
 
-// Private
-
-uint32_t OutContext::doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes) {
-	uint32_t curChunkBytes = chunk->getNumBytes() - curOffset;
-	uint32_t thisChunkBytes = std::min<uint32_t>(curChunkBytes, numBytes);
-	memcpy(dst, chunk->getBuffer() + curOffset, thisChunkBytes);
-	return thisChunkBytes;
-}
-
 NAN_MODULE_INIT(OutContext::Init) {
 	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
 	tpl->SetClassName(Nan::New("OutContext").ToLocalChecked());
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
+	SetPrototypeMethod(tpl, "close", Close);
 	SetPrototypeMethod(tpl, "isActive", IsActive);
+	SetPrototypeMethod(tpl, "isStopped", IsStopped);
 	SetPrototypeMethod(tpl, "openStream", OpenStream);
-	SetPrototypeMethod(tpl, "pause", Pause);
 	SetPrototypeMethod(tpl, "start", Start);
 	SetPrototypeMethod(tpl, "stop", Stop);
 	SetPrototypeMethod(tpl, "write", Write);
@@ -154,14 +145,62 @@ NAN_MODULE_INIT(OutContext::Init) {
 		);
 }
 
-bool OutContext::isActive() const {
-	std::unique_lock<std::mutex> lk(m);
-	return active;
+// Private
+
+uint32_t OutContext::doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes) {
+	uint32_t curChunkBytes = chunk->getNumBytes() - curOffset;
+	uint32_t thisChunkBytes = std::min<uint32_t>(curChunkBytes, numBytes);
+	memcpy(dst, chunk->getBuffer() + curOffset, thisChunkBytes);
+	return thisChunkBytes;
+}
+
+void OutContext::close() {
+	PaError errCode = Pa_CloseStream(stream);
+
+	if (errCode != paNoError) {
+		std::string err = std::string("Could not close output stream: ") + Pa_GetErrorText(errCode);
+		Nan::ThrowError(err.c_str());
+	}
+}
+
+NAN_METHOD(OutContext::Close) {
+	OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+	outContext->close();
+	info.GetReturnValue().SetUndefined();
+}
+
+bool OutContext::isActive() {
+	int res = Pa_IsStreamActive(stream);
+
+	if (res < 0) {
+		std::string err = std::string("Could not get stream state: ") + Pa_GetErrorText(res);
+		Nan::ThrowError(err.c_str());
+		return false;
+	} else {
+		return res == 1 ? true : false;
+	}
 }
 
 NAN_METHOD(OutContext::IsActive) {
 	OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
 	info.GetReturnValue().Set(outContext->isActive());
+}
+
+bool OutContext::isStopped() {
+	int res = Pa_IsStreamStopped(stream);
+
+	if (res < 0) {
+		std::string err = std::string("Could not get stream state: ") + Pa_GetErrorText(res);
+		Nan::ThrowError(err.c_str());
+		return false;
+	} else {
+		return res == 1 ? true : false;
+	}
+}
+
+NAN_METHOD(OutContext::IsStopped) {
+	OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+	info.GetReturnValue().Set(outContext->isStopped());
 }
 
 NAN_METHOD(OutContext::New) {
@@ -196,7 +235,9 @@ void OutContext::openStream(AudioOptions *audioOptions) {
 		Nan::ThrowError("No default output device");
 	}
 
-	printf("Output device name is %s\n", Pa_GetDeviceInfo(outParams.device)->name);
+	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(outParams.device);
+	const PaHostApiInfo* hostApiInfo = Pa_GetHostApiInfo(deviceInfo->hostApi);
+	printf("Using output device %s with API %s\n", deviceInfo->name, hostApiInfo->name);
 
 	outParams.channelCount = audioOptions->getChannelCount();
 
@@ -257,27 +298,12 @@ NAN_METHOD(OutContext::OpenStream) {
 	outContext->openStream(new AudioOptions(options));
 }
 
-void OutContext::pause() {
-	PaError errCode = Pa_StopStream(stream);
-
-	if (errCode != paNoError) {
-		std::string err = std::string("Could not stop output stream: ") + Pa_GetErrorText(errCode);
-		return Nan::ThrowError(err.c_str());
-	}
-}
-
-NAN_METHOD(OutContext::Pause) {
-	OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
-	outContext->pause();
-	info.GetReturnValue().SetUndefined();
-}
-
 void OutContext::start() {
 	PaError errCode = Pa_StartStream(stream);
 
 	if (errCode != paNoError) {
 		std::string err = std::string("Could not start output stream: ") + Pa_GetErrorText(errCode);
-		return Nan::ThrowError(err.c_str());
+		Nan::ThrowError(err.c_str());
 	}
 }
 
@@ -288,11 +314,11 @@ NAN_METHOD(OutContext::Start) {
 }
 
 void OutContext::stop() {
-	PaError errCode = Pa_CloseStream(stream);
+	PaError errCode = Pa_StopStream(stream);
 
 	if (errCode != paNoError) {
-		std::string err = std::string("Could not close output stream: ") + Pa_GetErrorText(errCode);
-		return Nan::ThrowError(err.c_str());
+		std::string err = std::string("Could not stop output stream: ") + Pa_GetErrorText(errCode);
+		Nan::ThrowError(err.c_str());
 	}
 }
 

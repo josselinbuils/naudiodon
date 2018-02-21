@@ -41,9 +41,9 @@ function AudioOutput(options) {
 
   this.isActive = () => outContext.isActive();
   this.isStopped = () => outContext.isStopped();
-  this.pause = () => outContext.pause();
+  this.stop = () => outContext.stop();
   this.start = () => outContext.start();
-  this.stop = () => outContext.pause();
+  this.close = () => outContext.close();
 
   // Triggered by readable stream
   this.on('finish', () => this.isActive() && this.stop());
