@@ -44,7 +44,4 @@ function AudioOutput(options) {
   this.stop = () => outContext.stop();
   this.start = () => outContext.start();
   this.close = () => outContext.close();
-
-  // Triggered by readable stream
-  this.on('finish', () => this.isActive() && this.stop());
 }

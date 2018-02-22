@@ -71,15 +71,15 @@ void OutContext::checkStatus(uint32_t statusFlags) {
 	}
 }
 
-bool OutContext::fillBuffer(void *buf, uint32_t frameCount) {
-	uint8_t *dst = (uint8_t *)buf;
+bool OutContext::fillBuffer(void *buffer, uint32_t frameCount) {
+	uint8_t *dst = (uint8_t *)buffer;
 	uint32_t bytesRemaining = frameCount * audioOptions->getChannelCount() * audioOptions->getSampleFormat() / 8;
 
 	uint32_t active = isActive();
 
 	if (
 		!active &&
-		(0 == chunkQueue.size()) &&
+		(chunkQueue.size() == 0) &&
 		(!curChunk || (curChunk && (bytesRemaining >= curChunk->getChunk()->getNumBytes() - curOffset)))
 		) {
 		if (curChunk) {
@@ -96,7 +96,7 @@ bool OutContext::fillBuffer(void *buf, uint32_t frameCount) {
 		cv.notify_one();
 	} else {
 		while (bytesRemaining) {
-			if (!(curChunk && (curOffset < curChunk->getChunk()->getNumBytes()))) {
+			if (!curChunk || curOffset >= curChunk->getChunk()->getNumBytes()) {
 				curChunk = chunkQueue.dequeue();
 				curOffset = 0;
 			}
@@ -155,7 +155,7 @@ uint32_t OutContext::doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t n
 }
 
 void OutContext::close() {
-	PaError errCode = Pa_CloseStream(stream);
+	PaError errCode = Pa_AbortStream(stream);
 
 	if (errCode != paNoError) {
 		std::string err = std::string("Could not close output stream: ") + Pa_GetErrorText(errCode);
