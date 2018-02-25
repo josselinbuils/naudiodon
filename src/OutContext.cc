@@ -23,17 +23,17 @@ using namespace v8;
 
 namespace streampunk {
 
-int streamCallback(const void *input, void *output, unsigned long frameCount, const PaStreamCallbackTimeInfo *timeInfo,
+int streamCallback(const void *input, void *output, unsigned long frameCount,
+                   const PaStreamCallbackTimeInfo *timeInfo,
                    PaStreamCallbackFlags statusFlags, void *userData) {
 
-	OutContext *context = (OutContext *)userData;
-	// context->checkStatus(statusFlags);
-	return context->fillBuffer(output, frameCount) ? paContinue : paComplete;
+	((OutContext *) userData)->fillBuffer(output, frameCount);
+	return paContinue;
 }
 
 // Public
 
-OutContext::OutContext() : chunkQueue(2), curOffset(0) {
+OutContext::OutContext() : chunkQueue(), curChunk(NULL), curOffset(0) {
 
 	PaError errCode = Pa_Initialize();
 
@@ -54,23 +54,7 @@ void OutContext::addChunk(std::shared_ptr<AudioChunk> audioChunk) {
 	chunkQueue.enqueue(audioChunk);
 }
 
-void OutContext::checkStatus(uint32_t statusFlags) {
-	if (statusFlags) {
-		std::string err = std::string("portAudio status - ");
-
-		if (statusFlags & paOutputUnderflow) {
-			err += "output underflow ";
-		} else if (statusFlags & paOutputOverflow) {
-			err += "output overflow ";
-		} else if (statusFlags & paPrimingOutput) {
-			err += "priming output ";
-		}
-
-		errorString = err;
-	}
-}
-
-bool OutContext::fillBuffer(void *buffer, uint32_t frameCount) {
+void OutContext::fillBuffer(void *buffer, uint32_t frameCount) {
 	uint8_t *dst = (uint8_t *)buffer;
 	uint32_t bytesRemaining = frameCount * audioOptions->getChannelCount() * audioOptions->getSampleFormat() / 8;
 
@@ -78,18 +62,17 @@ bool OutContext::fillBuffer(void *buffer, uint32_t frameCount) {
 		if (!curChunk || curOffset >= curChunk->getChunk()->getNumBytes()) {
 			curChunk = chunkQueue.dequeue();
 			curOffset = 0;
-		}
-		if (curChunk) {
-			uint32_t bytesCopied = doCopy(curChunk->getChunk(), dst, bytesRemaining);
-			bytesRemaining -= bytesCopied;
-			dst += bytesCopied;
-			curOffset += bytesCopied;
-		} else {
-			return false;
-		}
-	}
 
-	return true;
+			if (!curChunk) {
+				break;
+			}
+		}
+
+		uint32_t bytesCopied = doCopy(curChunk->getChunk(), dst, bytesRemaining);
+		bytesRemaining -= bytesCopied;
+		dst += bytesCopied;
+		curOffset += bytesCopied;
+	}
 }
 
 bool OutContext::getErrStr(std::string &errStr) {
@@ -103,6 +86,7 @@ NAN_MODULE_INIT(OutContext::Init) {
 	tpl->SetClassName(Nan::New("OutContext").ToLocalChecked());
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
+	SetPrototypeMethod(tpl, "clear", Clear);
 	SetPrototypeMethod(tpl, "close", Close);
 	SetPrototypeMethod(tpl, "isActive", IsActive);
 	SetPrototypeMethod(tpl, "isStopped", IsStopped);
@@ -129,8 +113,19 @@ uint32_t OutContext::doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t n
 	return thisChunkBytes;
 }
 
+void OutContext::clear() {
+	chunkQueue.clear();
+	curChunk = NULL;
+}
+
+NAN_METHOD(OutContext::Clear) {
+	OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
+	outContext->clear();
+	info.GetReturnValue().SetUndefined();
+}
+
 void OutContext::close() {
-	PaError errCode = Pa_AbortStream(stream);
+	PaError errCode = Pa_CloseStream(stream);
 
 	if (errCode != paNoError) {
 		std::string err = std::string("Could not close output stream: ") + Pa_GetErrorText(errCode);
@@ -187,26 +182,24 @@ NAN_METHOD(OutContext::New) {
 }
 
 void OutContext::openStream(AudioOptions *audioOptions) {
-
 	this->audioOptions = audioOptions;
-	this->curOffset = 0;
 
 	printf("Output %s\n", audioOptions->toString().c_str());
 
 	PaStreamParameters outParams;
 	memset(&outParams, 0, sizeof(PaStreamParameters));
 
-	// int32_t deviceID = (int32_t)audioOptions->getDeviceID();
-	//
-	// if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
-	//      outParams.device = (PaDeviceIndex)deviceID;
-	// } else {
-	//      outParams.device = Pa_GetDefaultOutputDevice();
-	// }
+	int32_t deviceID = (int32_t)audioOptions->getDeviceID();
+
+	if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
+		outParams.device = (PaDeviceIndex)deviceID;
+	} else {
+		outParams.device = Pa_GetDefaultOutputDevice();
+	}
 
 	// outParams.device = paUseHostApiSpecificDeviceSpecification;
 	// paWDMKS paWASAPI
-	outParams.device = Pa_GetHostApiInfo(Pa_HostApiTypeIdToHostApiIndex(paWDMKS))->defaultOutputDevice;
+	// outParams.device = Pa_GetHostApiInfo(Pa_HostApiTypeIdToHostApiIndex(paWDMKS))->defaultOutputDevice;
 
 	if (outParams.device == paNoDevice) {
 		Nan::ThrowError("No default output device");
@@ -256,7 +249,10 @@ void OutContext::openStream(AudioOptions *audioOptions) {
 	outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultHighOutputLatency;
   #endif
 
-	PaError errCode = Pa_OpenStream(&stream, NULL, &outParams, sampleRate, framesPerBuffer, paNoFlag, &streamCallback, this);
+	PaError errCode = Pa_OpenStream(
+		&stream, NULL, &outParams, sampleRate, framesPerBuffer, paNoFlag,
+		&streamCallback, this
+		);
 
 	if (errCode != paNoError) {
 		std::string err = std::string("Could not open stream: ") + Pa_GetErrorText(errCode);
@@ -323,7 +319,7 @@ NAN_METHOD(OutContext::Write) {
 	Local<Function> callback = Local<Function>::Cast(info[1]);
 	OutContext *outContext = Nan::ObjectWrap::Unwrap<OutContext>(info.Holder());
 
-	AsyncQueueWorker(new OutWorker(outContext, new Nan::Callback(callback), std::make_shared<AudioChunk>(chunkObj)));
+	AsyncQueueWorker(new OutWorker(outContext,new Nan::Callback(callback), std::make_shared<AudioChunk>(chunkObj)));
 	info.GetReturnValue().SetUndefined();
 }
 

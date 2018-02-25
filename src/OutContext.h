@@ -31,7 +31,7 @@ public:
 void addChunk(std::shared_ptr<AudioChunk> audioChunk);
 void checkStatus(uint32_t statusFlags);
 bool getErrStr(std::string& errStr);
-bool fillBuffer(void *buf, uint32_t frameCount);
+void fillBuffer(void *buf, uint32_t frameCount);
 static NAN_MODULE_INIT(Init);
 
 private:
@@ -49,6 +49,8 @@ uint32_t curOffset;
 std::string errorString;
 PaStream *stream;
 
+void clear();
+static NAN_METHOD(Clear);
 void close();
 static NAN_METHOD(Close);
 uint32_t doCopy(std::shared_ptr<Memory> chunk, void *dst, uint32_t numBytes);

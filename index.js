@@ -13,9 +13,16 @@
    limitations under the License.
  */
 
-const {inherits} = require('util');
-const {Writable} = require('stream');
-const {getDevices, OutContext} = require('bindings')('naudiodon.node');
+const {
+  inherits
+} = require('util');
+const {
+  Writable
+} = require('stream');
+const {
+  getDevices,
+  OutContext
+} = require('bindings')('naudiodon.node');
 
 inherits(AudioOutput, Writable);
 
@@ -35,9 +42,16 @@ function AudioOutput(options) {
     write: (chunk, encoding, cb) => outContext.write(chunk, cb),
   });
 
+  this.options = options;
+
+  Object.defineProperty(this, 'options', {
+    get: () => Object.assign({}, options)
+  });
+
   const outContext = new OutContext();
   outContext.openStream(options);
 
+  this.clear = () => outContext.clear();
   this.close = () => outContext.close();
   this.isActive = () => outContext.isActive();
   this.isStopped = () => outContext.isStopped();
