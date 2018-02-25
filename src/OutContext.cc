@@ -17,7 +17,6 @@
 #include "OutContext.h"
 #include "OutWorker.h"
 #include "Persist.h"
-#include <nan.h>
 #include <pa_win_wasapi.h>
 
 using namespace v8;
@@ -29,14 +28,12 @@ int streamCallback(const void *input, void *output, unsigned long frameCount, co
 
 	OutContext *context = (OutContext *)userData;
 	// context->checkStatus(statusFlags);
-
 	return context->fillBuffer(output, frameCount) ? paContinue : paComplete;
 }
 
 // Public
 
-OutContext::OutContext()
-	: chunkQueue(2), curOffset(0), active(true), finished(false) {
+OutContext::OutContext() : chunkQueue(2), curOffset(0) {
 
 	PaError errCode = Pa_Initialize();
 
@@ -47,6 +44,9 @@ OutContext::OutContext()
 }
 
 OutContext::~OutContext() {
+	if (stream != nullptr) {
+		Pa_AbortStream(stream);
+	}
 	Pa_Terminate();
 }
 
@@ -66,7 +66,6 @@ void OutContext::checkStatus(uint32_t statusFlags) {
 			err += "priming output ";
 		}
 
-		std::lock_guard<std::mutex> lk(m);
 		errorString = err;
 	}
 }
@@ -75,49 +74,25 @@ bool OutContext::fillBuffer(void *buffer, uint32_t frameCount) {
 	uint8_t *dst = (uint8_t *)buffer;
 	uint32_t bytesRemaining = frameCount * audioOptions->getChannelCount() * audioOptions->getSampleFormat() / 8;
 
-	uint32_t active = isActive();
-
-	if (
-		!active &&
-		(chunkQueue.size() == 0) &&
-		(!curChunk || (curChunk && (bytesRemaining >= curChunk->getChunk()->getNumBytes() - curOffset)))
-		) {
+	while (bytesRemaining) {
+		if (!curChunk || curOffset >= curChunk->getChunk()->getNumBytes()) {
+			curChunk = chunkQueue.dequeue();
+			curOffset = 0;
+		}
 		if (curChunk) {
 			uint32_t bytesCopied = doCopy(curChunk->getChunk(), dst, bytesRemaining);
-			uint32_t missingBytes = bytesRemaining - bytesCopied;
-
-			if (missingBytes > 0) {
-				printf("Finishing - %d bytes not available for the last output buffer\n", missingBytes);
-				memset(dst + bytesCopied, 0, missingBytes);
-			}
-		}
-		std::lock_guard<std::mutex> lk(m);
-		finished = true;
-		cv.notify_one();
-	} else {
-		while (bytesRemaining) {
-			if (!curChunk || curOffset >= curChunk->getChunk()->getNumBytes()) {
-				curChunk = chunkQueue.dequeue();
-				curOffset = 0;
-			}
-			if (curChunk) {
-				uint32_t bytesCopied = doCopy(curChunk->getChunk(), dst, bytesRemaining);
-				bytesRemaining -= bytesCopied;
-				dst += bytesCopied;
-				curOffset += bytesCopied;
-			} else { // Deal with termination case of ChunkQueue being kicked and returning null chunk
-				std::lock_guard<std::mutex> lk(m);
-				finished = true;
-				cv.notify_one();
-				break;
-			}
+			bytesRemaining -= bytesCopied;
+			dst += bytesCopied;
+			curOffset += bytesCopied;
+		} else {
+			return false;
 		}
 	}
-	return !finished;
+
+	return true;
 }
 
 bool OutContext::getErrStr(std::string &errStr) {
-	std::lock_guard<std::mutex> lk(m);
 	errStr = errorString;
 	errorString = std::string();
 	return errStr != std::string();
@@ -213,23 +188,25 @@ NAN_METHOD(OutContext::New) {
 
 void OutContext::openStream(AudioOptions *audioOptions) {
 
-	this->active = true;
 	this->audioOptions = audioOptions;
 	this->curOffset = 0;
-	this->finished = false;
 
 	printf("Output %s\n", audioOptions->toString().c_str());
 
 	PaStreamParameters outParams;
 	memset(&outParams, 0, sizeof(PaStreamParameters));
 
-	int32_t deviceID = (int32_t)audioOptions->getDeviceID();
+	// int32_t deviceID = (int32_t)audioOptions->getDeviceID();
+	//
+	// if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
+	//      outParams.device = (PaDeviceIndex)deviceID;
+	// } else {
+	//      outParams.device = Pa_GetDefaultOutputDevice();
+	// }
 
-	if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
-		outParams.device = (PaDeviceIndex)deviceID;
-	} else {
-		outParams.device = Pa_GetDefaultOutputDevice();
-	}
+	// outParams.device = paUseHostApiSpecificDeviceSpecification;
+	// paWDMKS paWASAPI
+	outParams.device = Pa_GetHostApiInfo(Pa_HostApiTypeIdToHostApiIndex(paWDMKS))->defaultOutputDevice;
 
 	if (outParams.device == paNoDevice) {
 		Nan::ThrowError("No default output device");
@@ -274,10 +251,10 @@ void OutContext::openStream(AudioOptions *audioOptions) {
 	double sampleRate = (double)audioOptions->getSampleRate();
 	uint32_t framesPerBuffer = paFramesPerBufferUnspecified;
 
-    #ifdef __arm__
+  #ifdef __arm__
 	framesPerBuffer = 256;
 	outParams.suggestedLatency = Pa_GetDeviceInfo(outParams.device)->defaultHighOutputLatency;
-    #endif
+  #endif
 
 	PaError errCode = Pa_OpenStream(&stream, NULL, &outParams, sampleRate, framesPerBuffer, paNoFlag, &streamCallback, this);
 

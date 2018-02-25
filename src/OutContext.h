@@ -20,8 +20,7 @@
 #include "AudioOptions.h"
 #include "ChunkQueue.h"
 #include "Memory.h"
-#include <mutex>
-#include <condition_variable>
+#include <nan.h>
 #include <portaudio.h>
 
 namespace streampunk {
@@ -43,15 +42,11 @@ static inline Nan::Persistent<v8::Function> & constructor() {
 	return my_constructor;
 }
 
-bool active;
 AudioOptions *audioOptions;
 ChunkQueue<std::shared_ptr<AudioChunk> > chunkQueue;
 std::shared_ptr<AudioChunk> curChunk;
 uint32_t curOffset;
-std::condition_variable cv;
 std::string errorString;
-bool finished;
-mutable std::mutex m;
 PaStream *stream;
 
 void close();

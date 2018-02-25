@@ -17,8 +17,6 @@ const {inherits} = require('util');
 const {Writable} = require('stream');
 const {getDevices, OutContext} = require('bindings')('naudiodon.node');
 
-const outContext = new OutContext();
-
 inherits(AudioOutput, Writable);
 
 exports.AudioOutput = AudioOutput;
@@ -37,11 +35,12 @@ function AudioOutput(options) {
     write: (chunk, encoding, cb) => outContext.write(chunk, cb),
   });
 
+  const outContext = new OutContext();
   outContext.openStream(options);
 
+  this.close = () => outContext.close();
   this.isActive = () => outContext.isActive();
   this.isStopped = () => outContext.isStopped();
-  this.stop = () => outContext.stop();
   this.start = () => outContext.start();
-  this.close = () => outContext.close();
+  this.stop = () => outContext.stop();
 }

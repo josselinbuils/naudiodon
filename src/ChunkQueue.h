@@ -33,6 +33,17 @@ ChunkQueue(uint32_t inputMaxQueue)
 ~ChunkQueue() {
 }
 
+void enqueue(T t) {
+	std::unique_lock<std::mutex> lk(mutex);
+
+	while(active && queue.size() >= maxQueue) {
+		conditionVariable.wait(lk);
+	}
+
+	queue.push(t);
+	conditionVariable.notify_one();
+}
+
 T dequeue() {
 	std::unique_lock<std::mutex> lk(mutex);
 
@@ -58,16 +69,6 @@ void enqueue(T t) {
 
 	queue.push(t);
 	conditionVariable.notify_one();
-}
-
-void quit() {
-	std::lock_guard<std::mutex> lk(m);
-
-	if (queue.size() == 0 || queue.size() >= maxQueue) {
-		// ensure release of any blocked thread
-		active = false;
-		conditionVariable.notify_all();
-	}
 }
 
 size_t size() const {
