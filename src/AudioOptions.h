@@ -27,7 +27,7 @@ namespace streampunk {
 class AudioOptions : public Params {
 public:
 AudioOptions(Local<Object> tags)
-	: deviceID(unpackNum(tags, "deviceId", 0xffffffff)),
+	: apiId(unpackNum(tags, "apiId", 0xffffffff)),
 	sampleRate(unpackNum(tags, "sampleRate", 44100)),
 	channelCount(unpackNum(tags, "channelCount", 2)),
 	sampleFormat(unpackNum(tags, "sampleFormat", 8)),
@@ -40,8 +40,8 @@ AudioOptions(Local<Object> tags)
 uint32_t getChannelCount() const {
 	return channelCount;
 }
-uint32_t getDeviceID() const {
-	return deviceID;
+uint32_t getApiId() const {
+	return apiId;
 }
 uint32_t getMaxQueue() const {
 	return maxQueue;
@@ -58,10 +58,10 @@ std::string toString() const {
 
 	ss << "audio options: ";
 
-	if (deviceID == 0xffffffff) {
-		ss << "default device, ";
+	if (apiId == 0xffffffff) {
+		ss << "default API, ";
 	} else {
-		ss << "device " << deviceID << ", ";
+		ss << "API " << apiId << ", ";
 	}
 
 	ss << "sample rate " << sampleRate << ", ";
@@ -74,7 +74,7 @@ std::string toString() const {
 
 private:
 uint32_t channelCount;
-uint32_t deviceID;
+uint32_t apiId;
 uint32_t maxQueue;
 uint32_t sampleFormat;
 uint32_t sampleRate;

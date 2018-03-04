@@ -14,15 +14,15 @@
  */
 
 #include <nan.h>
-#include "GetDevices.h"
+#include "GetAPIList.h"
 #include "OutContext.h"
 
 NAN_MODULE_INIT(Init) {
 
 	Nan::Set(
 		target,
-		Nan::New("getDevices").ToLocalChecked(),
-		Nan::GetFunction(Nan::New<v8::FunctionTemplate>(streampunk::GetDevices)).ToLocalChecked()
+		Nan::New("getAPIList").ToLocalChecked(),
+		Nan::GetFunction(Nan::New<v8::FunctionTemplate>(streampunk::GetAPIList)).ToLocalChecked()
 		);
 
 	streampunk::OutContext::Init(target);

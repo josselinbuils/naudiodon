@@ -4,7 +4,7 @@
       "target_name": "naudiodon",
       "sources": [
         "src/naudiodon.cc",
-        "src/GetDevices.cc",
+        "src/GetAPIList.cc",
       	"src/OutContext.cc",
       ],
       "include_dirs": [

@@ -189,25 +189,21 @@ void OutContext::openStream(AudioOptions *audioOptions) {
 	PaStreamParameters outParams;
 	memset(&outParams, 0, sizeof(PaStreamParameters));
 
-	int32_t deviceID = (int32_t)audioOptions->getDeviceID();
+	int apiId = audioOptions->getApiId();
 
-	if (deviceID >= 0 && deviceID < Pa_GetDeviceCount()) {
-		outParams.device = (PaDeviceIndex)deviceID;
-	} else {
-		outParams.device = Pa_GetDefaultOutputDevice();
+	if (apiId < 0 || apiId >= Pa_GetHostApiCount()) {
+		apiId = Pa_GetDefaultHostApi();
 	}
 
-	// outParams.device = paUseHostApiSpecificDeviceSpecification;
-	// paWDMKS paWASAPI
-	// outParams.device = Pa_GetHostApiInfo(Pa_HostApiTypeIdToHostApiIndex(paWDMKS))->defaultOutputDevice;
+	const PaHostApiInfo* apiInfo = Pa_GetHostApiInfo(apiId);
+	outParams.device = apiInfo->defaultOutputDevice;
 
 	if (outParams.device == paNoDevice) {
 		Nan::ThrowError("No default output device");
 	}
 
 	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(outParams.device);
-	const PaHostApiInfo* hostApiInfo = Pa_GetHostApiInfo(deviceInfo->hostApi);
-	printf("Using output device %s with API %s\n", deviceInfo->name, hostApiInfo->name);
+	printf("Using output device %s with API %s\n", deviceInfo->name, apiInfo->name);
 
 	outParams.channelCount = audioOptions->getChannelCount();
 

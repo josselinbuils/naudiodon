@@ -20,14 +20,14 @@ const {
   Writable
 } = require('stream');
 const {
-  getDevices,
+  getAPIList,
   OutContext
 } = require('bindings')('naudiodon.node');
 
 inherits(AudioOutput, Writable);
 
 exports.AudioOutput = AudioOutput;
-exports.getDevices = getDevices;
+exports.getAPIList = getAPIList;
 
 function AudioOutput(options) {
 

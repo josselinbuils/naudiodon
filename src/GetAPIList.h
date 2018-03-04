@@ -13,14 +13,14 @@
    limitations under the License.
  */
 
-#ifndef GETDEVICES_H
-#define GETDEVICES_H
+#ifndef GETAPILIST_H
+#define GETAPILIST_H
 
 #include <nan.h>
 
 namespace streampunk {
 
-NAN_METHOD(GetDevices);
+NAN_METHOD(GetAPIList);
 
 } // namespace streampunk
 
